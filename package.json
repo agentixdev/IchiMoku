@@ -1,0 +1,10 @@
+{
+  "name": "ichimoku-whatsapp-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Relays TradingView Ichimoku alerts to the 'Ichimoku' WhatsApp group via a gateway (Whapi/Wassenger).",
+  "engines": {
+    "node": ">=18"
+  }
+}

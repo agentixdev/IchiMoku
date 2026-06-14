@@ -1,0 +1,127 @@
+//@version=6
+indicator(title="Ichimoku Signals Final", shorttitle="Ichi Sig Final", overlay=true, max_labels_count=500)
+max_bars_back(close, 500)
+
+// ── Inputs / Paramètres
+conversionPeriods   = input.int(9,  minval=1, title="Conversion Line Length")
+basePeriods         = input.int(26, minval=1, title="Base Line Length")
+laggingSpan2Periods = input.int(52, minval=1, title="Leading Span B Length")
+displacement        = input.int(26, minval=1, title="Lagging Span")
+
+// ── Chop filters / Filtres de range (Ichimoku only)
+useKjSlope  = input.bool(true,  "Filter: Kijun must slope",   group="Chop Filters")
+kjSlopeLen  = input.int(4,      "Kijun slope lookback",       minval=1, group="Chop Filters")
+useKumoThk  = input.bool(true,  "Filter: Min Kumo thickness", group="Chop Filters")
+kumoMinPct  = input.float(0.75, "Min Kumo thickness %",       minval=0.0, step=0.05, group="Chop Filters")
+useTKSep    = input.bool(true,  "Filter: Min TK separation",  group="Chop Filters")
+tkMinPct    = input.float(0.15, "Min TK separation %",        minval=0.0, step=0.05, group="Chop Filters")
+useChikouOS = input.bool(true,  "Filter: Chikou open space",  group="Chop Filters")
+cooldown    = input.int(3,      "Bars to wait after exit",    minval=0, group="Chop Filters")
+
+// ── P&L
+posSize = input.float(1, "Position size (units/contracts)", minval=0, group="P&L")
+
+NEON_GREEN = #00FF6A
+NEON_RED   = #FF1744
+
+// ── Ichimoku core
+donchian(len) =>
+    math.avg(ta.lowest(len), ta.highest(len))
+
+conversionLine = donchian(conversionPeriods)
+baseLine       = donchian(basePeriods)
+leadLine1      = math.avg(conversionLine, baseLine)
+leadLine2      = donchian(laggingSpan2Periods)
+max_bars_back(leadLine1, 500)
+max_bars_back(leadLine2, 500)
+
+// Past/present values only — no lookahead / aucune donnée future
+d        = displacement - 1
+cloudTop = math.max(leadLine1[d], leadLine2[d])           // cloud visible under current bar
+cloudBot = math.min(leadLine1[d], leadLine2[d])
+lagTop   = math.max(leadLine1[2 * d], leadLine2[2 * d])   // cloud visible at Chikou position
+lagBot   = math.min(leadLine1[2 * d], leadLine2[2 * d])
+
+// ── Filter conditions / Conditions des filtres
+kumoThkOK    = not useKumoThk or (cloudTop - cloudBot) / close * 100 >= kumoMinPct
+tkSepOK      = not useTKSep   or math.abs(conversionLine - baseLine) / close * 100 >= tkMinPct
+kjUp         = not useKjSlope or baseLine > baseLine[kjSlopeLen]
+kjDown       = not useKjSlope or baseLine < baseLine[kjSlopeLen]
+chikouUpOK   = not useChikouOS or close > ta.highest(high, 5)[d]   // Chikou above candles near its position
+chikouDownOK = not useChikouOS or close < ta.lowest(low, 5)[d]
+
+// ── Entry conditions / Conditions d'entrée
+longSetup  = close > cloudTop and leadLine1 > leadLine2 and conversionLine > baseLine and close > lagTop  and kjUp   and kumoThkOK and tkSepOK and chikouUpOK
+shortSetup = close < cloudBot and leadLine1 < leadLine2 and conversionLine < baseLine and close < lagBot and kjDown and kumoThkOK and tkSepOK and chikouDownOK
+
+// Chikou × Conversion Line cross / croisement Chikou-Tenkan
+lagCrossDown = ta.crossunder(close, conversionLine[d])   // Chikou below Tenkan → exit long
+lagCrossUp   = ta.crossover(close, conversionLine[d])    // Chikou above Tenkan → exit short
+confirmed    = barstate.isconfirmed or barstate.ishistory
+
+// ── Badge helper
+badge(string txt, bool up, color bg, color tc) =>
+    y  = up ? low : high
+    st = up ? label.style_label_up : label.style_label_down
+    label.new(bar_index, y, txt, style=st, color=bg, textcolor=tc, size=size.normal, text_formatting=text.format_bold)
+
+// ── Trade state / État du trade
+var int   pos         = 0
+var float stop        = na
+var float entryPrice  = na
+var int   lastExitBar = -99999
+
+// Exit priority: SL > Chikou cross / priorité : SL > croisement Chikou
+slHit   = confirmed and (pos == 1 and low <= stop or pos == -1 and high >= stop)
+lagX    = confirmed and not slHit and (pos == 1 and lagCrossDown or pos == -1 and lagCrossUp)
+exitSig = slHit or lagX
+wasLong = pos == 1
+
+if exitSig
+    exitPrice = slHit ? stop : close
+    pnl       = (wasLong ? (exitPrice - entryPrice) : (entryPrice - exitPrice)) * posSize
+    pnlTxt    = (pnl >= 0 ? "$" : "-$") + str.tostring(math.round(math.abs(pnl))) + " USD"
+    baseTxt   = slHit ? "Exit SL" : "Exit"
+    badge(baseTxt + "\n" + pnlTxt, not wasLong, slHit ? NEON_RED : NEON_GREEN, slHit ? color.white : color.black)
+    alert('{"group":"Ichimoku","signal":"' + (slHit ? "EXIT_SL" : "EXIT") + '","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period + '","price":' + str.tostring(exitPrice) + ',"pnl":' + str.tostring(math.round(pnl)) + ',"side":"' + (wasLong ? "LONG" : "SHORT") + '"}', alert.freq_once_per_bar_close)
+    pos         := 0
+    stop        := na
+    entryPrice  := na
+    lastExitBar := bar_index
+
+cooldownOK = bar_index - lastExitBar > cooldown
+longSig  = confirmed and not exitSig and pos == 0 and cooldownOK and longSetup
+shortSig = confirmed and not exitSig and pos == 0 and cooldownOK and shortSetup
+
+if longSig
+    pos        := 1
+    stop       := cloudBot
+    entryPrice := close
+    badge("Long", true, NEON_GREEN, color.black)
+    alert('{"group":"Ichimoku","signal":"LONG","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period + '","price":' + str.tostring(close) + ',"stop":' + str.tostring(stop) + '}', alert.freq_once_per_bar_close)
+
+if shortSig
+    pos        := -1
+    stop       := cloudTop
+    entryPrice := close
+    badge("Short", false, NEON_RED, color.white)
+    alert('{"group":"Ichimoku","signal":"SHORT","ticker":"' + syminfo.ticker + '","tf":"' + timeframe.period + '","price":' + str.tostring(close) + ',"stop":' + str.tostring(stop) + '}', alert.freq_once_per_bar_close)
+
+// ── Plots
+plot(conversionLine, color=#00E5FF, title="Conversion Line", linewidth=2)
+plot(baseLine,       color=#FF9100, title="Base Line",       linewidth=2)
+plot(close, offset=-displacement + 1, color=color.new(#E040FB, 30), title="Lagging Span")
+p1 = plot(leadLine1, offset=displacement - 1, color=color.new(#00FF6A, 40), title="Leading Span A")
+p2 = plot(leadLine2, offset=displacement - 1, color=color.new(#FF1744, 40), title="Leading Span B")
+fill(p1, p2, title="Cloud Fill", color=leadLine1 > leadLine2 ? color.new(#00FF6A, 78) : color.new(#FF1744, 78))
+
+plot(pos != 0 ? stop : na, "Stop", color=color.red, style=plot.style_linebr)
+
+// ── Alerts
+// RECOMMENDED for WhatsApp: create ONE alert with condition = "Any alert() function call",
+// freq "Once Per Bar Close", and paste your webhook URL. The alert() calls above send a
+// JSON payload (group/signal/ticker/tf/price/stop/pnl) that the relay forwards to the
+// "Ichimoku" WhatsApp group. The alertcondition() lines below are kept as a manual fallback.
+alertcondition(longSig,  "Long Entry",  "Ichimoku LONG")
+alertcondition(shortSig, "Short Entry", "Ichimoku SHORT")
+alertcondition(exitSig,  "Exit",        "Ichimoku EXIT")

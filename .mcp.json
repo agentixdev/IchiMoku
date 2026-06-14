@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tradingview": {
+      "command": "npx",
+      "args": ["-y", "tradingview-mcp-server"]
+    }
+  }
+}

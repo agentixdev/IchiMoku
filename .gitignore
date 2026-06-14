@@ -1,0 +1,17 @@
+# secrets / local config
+.env
+.env.local
+.env*.local
+.vercel
+.claude/settings.local.json
+
+# session / runtime
+.remember/
+node_modules/
+__pycache__/
+*.pyc
+signal-engine/*.log
+signal-engine/state.json
+signal-engine/engine.log
+signal-engine/*.tmp
+*.png
