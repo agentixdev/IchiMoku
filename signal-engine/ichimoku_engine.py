@@ -111,8 +111,14 @@ def fetch_candles(symbol, timeframe, exchange, limit=1000):
         rows = _http_get_json(url)
         out = [{"t": int(r[0]), "o": float(r[1]), "h": float(r[2]),
                 "l": float(r[3]), "c": float(r[4])} for r in rows]
-    elif exchange == "binancefutures":  # COIN-M (USD): BTCUSD_PERP etc.
+    elif exchange == "binancefutures":  # COIN-M (USD-settled): BTCUSD_PERP etc. = TradingView BTCUSD.P
         url = (f"https://dapi.binance.com/dapi/v1/klines?symbol={symbol}"
+               f"&interval={tf}&limit={min(limit, 1500)}")
+        rows = _http_get_json(url)
+        out = [{"t": int(r[0]), "o": float(r[1]), "h": float(r[2]),
+                "l": float(r[3]), "c": float(r[4])} for r in rows]
+    elif exchange == "binanceusdm":  # USD-M (USDT-margined): ETHUSDT, BTCUSDT = TradingView ETHUSDT.P
+        url = (f"https://fapi.binance.com/fapi/v1/klines?symbol={symbol}"
                f"&interval={tf}&limit={min(limit, 1500)}")
         rows = _http_get_json(url)
         out = [{"t": int(r[0]), "o": float(r[1]), "h": float(r[2]),
