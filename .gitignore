@@ -13,5 +13,6 @@ __pycache__/
 signal-engine/*.log
 signal-engine/state.json
 signal-engine/engine.log
+signal-engine/secrets.env
 signal-engine/*.tmp
 *.png
