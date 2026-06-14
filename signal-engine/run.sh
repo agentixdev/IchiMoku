@@ -4,10 +4,16 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# ── WhatsApp gateway ─────────────────────────────────────────────
-export WA_PROVIDER="whapi"            # or "wassenger"
-export WA_TOKEN="your-gateway-api-token"
-export WA_GROUP_ID="120363xxxxxxxxxxxx@g.us"
+# ── Destination ──────────────────────────────────────────────────
+# Telegram (free, recommended):
+export PROVIDER="telegram"
+export TELEGRAM_BOT_TOKEN="123456:ABC-your-bot-token"
+export TELEGRAM_CHAT_ID="-1001234567890"   # the Ichimoku group/channel id
+
+# --- OR a WhatsApp gateway instead (comment out Telegram above) ---
+# export PROVIDER="whapi"             # or "wassenger"
+# export WA_TOKEN="your-gateway-api-token"
+# export WA_GROUP_ID="120363xxxxxxxxxxxx@g.us"
 
 # ── What to watch ────────────────────────────────────────────────
 export SYMBOLS="BTCUSDT,ETHUSDT"      # edit to your pairs

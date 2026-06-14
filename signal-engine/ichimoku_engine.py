@@ -213,31 +213,50 @@ def format_message(symbol, timeframe, sig):
     return "\n".join(lines)
 
 
-def send_whatsapp(text):
+def send_message(text):
+    """Send to the configured destination.
+
+    PROVIDER=telegram  (free, official Bot API, recommended) -> TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    PROVIDER=whapi / wassenger (WhatsApp gateways)           -> WA_TOKEN, WA_GROUP_ID
+    """
     if env("DRY_RUN") == "1":
         # Write UTF-8 bytes directly so emoji don't crash limited consoles (Windows cp1252).
         sys.stdout.buffer.write(("[DRY_RUN] would send:\n" + text + "\n\n").encode("utf-8"))
         sys.stdout.flush()
         return
-    provider = env("WA_PROVIDER", "whapi")
-    token = env("WA_TOKEN")
-    group = env("WA_GROUP_ID")
-    if not token or not group:
-        raise RuntimeError("WA_TOKEN and WA_GROUP_ID must be set")
 
-    if provider == "wassenger":
-        url = "https://api.wassenger.com/v1/messages"
-        headers = {"Token": token, "Content-Type": "application/json"}
-        body = {"group": group, "message": text}
-    else:  # whapi
-        url = "https://gate.whapi.cloud/messages/text"
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        body = {"to": group, "body": text}
+    provider = (env("PROVIDER") or env("WA_PROVIDER", "telegram")).lower()
+
+    if provider == "telegram":
+        token = env("TELEGRAM_BOT_TOKEN")
+        chat_id = env("TELEGRAM_CHAT_ID")
+        if not token or not chat_id:
+            raise RuntimeError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set")
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        headers = {"Content-Type": "application/json"}
+        body = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+    else:
+        token = env("WA_TOKEN")
+        group = env("WA_GROUP_ID")
+        if not token or not group:
+            raise RuntimeError("WA_TOKEN and WA_GROUP_ID must be set")
+        if provider == "wassenger":
+            url = "https://api.wassenger.com/v1/messages"
+            headers = {"Token": token, "Content-Type": "application/json"}
+            body = {"group": group, "message": text}
+        else:  # whapi
+            url = "https://gate.whapi.cloud/messages/text"
+            headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            body = {"to": group, "body": text}
 
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
                                  headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=20) as resp:
         resp.read()
+
+
+# Backwards-compatible alias
+send_whatsapp = send_message
 
 
 # ── State (dedupe by last-processed candle open time, per symbol) ─────────────

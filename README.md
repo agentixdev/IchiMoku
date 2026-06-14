@@ -13,9 +13,23 @@ There are **two ways** to do this. Pick one:
 | Exact indicator parity | Yes (full logic ported) | Yes (native) |
 | Market | Crypto (Bybit/Binance) | Anything on TradingView |
 
-Both paths still need a **WhatsApp gateway** (Whapi.cloud or Wassenger) because WhatsApp
-has **no official API for sending to groups**. You link your WhatsApp account once via QR
-and get a REST token.
+### Destination: Telegram (free, recommended) or WhatsApp (paid-ish)
+- **Telegram** — *completely free*, official Bot API, sends to groups directly. No gateway,
+  no monthly fee, no QR, no linked phone. **Recommended.** Set `PROVIDER=telegram`.
+- **WhatsApp** — needs a third-party gateway (Whapi.cloud free Sandbox, or Wassenger trial)
+  because WhatsApp has **no official group-send API**. Set `PROVIDER=whapi`/`wassenger`.
+
+#### Telegram setup (2 minutes)
+1. In Telegram, message **@BotFather** → `/newbot` → follow prompts → copy the **bot token**
+   (looks like `123456:ABC...`).
+2. Create/open your **Ichimoku** group, **add your bot** to it (and make it admin so it can
+   post). Send any message in the group.
+3. Get the group **chat id** — run:
+   ```bash
+   curl -s "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates" | python -m json.tool
+   ```
+   Find `"chat": {"id": -100...}` — that negative number is your `TELEGRAM_CHAT_ID`.
+4. Put `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` into `run.sh`.
 
 > ### ❌ What does NOT work — and why
 > - **The `tradingview-mcp-server` MCP** is a market *screener*. It cannot create alerts,
@@ -37,11 +51,9 @@ It pulls free OHLC candles, replays your indicator's exact logic (cloud, Chikou,
 filters, stateful entries, fixed-SL exits, Chikou-cross exits, cooldown), and sends any
 **new** signal to WhatsApp. State is deduped so you never get the same alert twice.
 
-### 1. WhatsApp gateway (one-time)
-Pick one provider and get a token + the group id:
-- **Whapi.cloud** (`WA_PROVIDER=whapi`): create a channel → scan QR with the phone that's
-  in the *Ichimoku* group → copy the API token → find the group id (`...@g.us`).
-- **Wassenger** (`WA_PROVIDER=wassenger`): create a Device → scan QR → API token → group WID.
+### 1. Pick a destination (one-time)
+See **"Destination"** above. Telegram (free) is recommended — get a bot token + chat id.
+WhatsApp works too via a gateway if you prefer that app.
 
 ### 2. Put it on your Hostinger VPS
 ```bash
@@ -70,9 +82,11 @@ For 15m: `*/15 * * * *`. For 1d: `10 0 * * *`.
 | `SYMBOLS` | `BTCUSDT,ETHUSDT` | comma list of pairs |
 | `TIMEFRAME` | `1h` | `1m,5m,15m,30m,1h,2h,4h,6h,12h,1d` |
 | `EXCHANGE` | `bybit` | `bybit` (broad access incl. US) or `binance` |
-| `WA_PROVIDER` | `whapi` | `whapi` or `wassenger` |
-| `WA_TOKEN` | — | gateway token |
-| `WA_GROUP_ID` | — | `...@g.us` |
+| `PROVIDER` | `telegram` | `telegram` (free), `whapi`, or `wassenger` |
+| `TELEGRAM_BOT_TOKEN` | — | from @BotFather (if telegram) |
+| `TELEGRAM_CHAT_ID` | — | group chat id, e.g. `-1001234567890` (if telegram) |
+| `WA_TOKEN` | — | gateway token (if whapi/wassenger) |
+| `WA_GROUP_ID` | — | `...@g.us` (if whapi/wassenger) |
 | `POS_SIZE` | `1` | units for P&L on exits |
 | `DRY_RUN` | — | `1` = print instead of send |
 
