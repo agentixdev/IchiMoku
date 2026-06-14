@@ -13,19 +13,20 @@ fi
 export PROVIDER="telegram"
 
 # ── What to watch ────────────────────────────────────────────────
-# EASY: to add a symbol, just append it to SYMBOLS (comma-separated).
-# With EXCHANGE=yahoo you can mix crypto + forex + stocks in one list:
-#   crypto  -> BTC-USD, ETH-USD, SOL-USD
-#   forex   -> EURUSD=X, GBPUSD=X, USDJPY=X
-#   stocks  -> AAPL, TSLA, SPY
-export EXCHANGE="yahoo"               # yahoo | binance | binancefutures | bybit
-export SYMBOLS="BTC-USD,ETH-USD,EURUSD=X"
-export TIMEFRAME="1d"                 # Daily  (yahoo supports 1m/5m/15m/30m/1h/1d)
-export POS_SIZE="1"
+# Each symbol can carry its own timeframe + exchange:  symbol:timeframe:exchange
+# (omit parts to use the global TIMEFRAME / EXCHANGE defaults below).
+#
+# BTC = TradingView "BTCUSD.P" = Binance COIN-M perpetual BTCUSD_PERP, on 4h:
+export SYMBOLS="BTCUSD_PERP:4h:binancefutures"
+#
+# To add more later, comma-separate. Examples (note Yahoo has no 4h — use 1h/1d there):
+#   export SYMBOLS="BTCUSD_PERP:4h:binancefutures,ETHUSD_PERP:4h:binancefutures"
+#   export SYMBOLS="BTCUSD_PERP:4h:binancefutures,EURUSD=X:1d:yahoo,ETH-USD:1d:yahoo"
 
-# Alternatives if you prefer a specific exchange instead of Yahoo:
-#   export EXCHANGE="binancefutures"; export SYMBOLS="BTCUSD_PERP,ETHUSD_PERP"   # Binance COIN-M (USD)
-#   export EXCHANGE="binance";        export SYMBOLS="BTCUSDT,ETHUSDT"           # Binance spot (USDT)
+# Global defaults (used when a symbol omits its :timeframe:exchange)
+export TIMEFRAME="4h"
+export EXCHANGE="binancefutures"      # yahoo | binance | binancefutures | bybit
+export POS_SIZE="1"
 
 # export DRY_RUN="1"                  # uncomment to test without sending
 

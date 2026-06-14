@@ -322,21 +322,38 @@ def save_state(path, state):
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+def parse_specs():
+    """Each SYMBOLS entry is `symbol[:timeframe[:exchange]]`; missing parts fall
+    back to the global TIMEFRAME / EXCHANGE. Lets BTC run on 4h while others differ.
+    e.g. SYMBOLS="BTCUSD_PERP:4h:binancefutures,ETH-USD:1d:yahoo"
+    """
+    default_tf = env("TIMEFRAME", "1h").lower()
+    default_ex = env("EXCHANGE", "yahoo").lower()
+    specs = []
+    for raw in env("SYMBOLS", "BTCUSD_PERP:4h:binancefutures").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        parts = [p.strip() for p in raw.split(":")]
+        sym = parts[0]
+        tf = parts[1].lower() if len(parts) > 1 and parts[1] else default_tf
+        ex = parts[2].lower() if len(parts) > 2 and parts[2] else default_ex
+        specs.append((sym, tf, ex))
+    return specs
+
+
 def main():
-    symbols = [s.strip() for s in env("SYMBOLS", "BTCUSDT,ETHUSDT").split(",") if s.strip()]
-    timeframe = env("TIMEFRAME", "1h").lower()
-    exchange = env("EXCHANGE", "bybit").lower()
     pos_size = float(env("POS_SIZE", "1"))
     state_path = env("STATE_FILE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json"))
 
     state = load_state(state_path)
     sent_any = False
 
-    for symbol in symbols:
+    for symbol, timeframe, exchange in parse_specs():
         try:
             candles = fetch_candles(symbol, timeframe, exchange)
-        except (urllib.error.URLError, ValueError, KeyError) as e:
-            print(f"[{symbol}] fetch error: {e}", file=sys.stderr)
+        except (urllib.error.URLError, ValueError, KeyError, IndexError) as e:
+            print(f"[{symbol} {timeframe} {exchange}] fetch error: {e}", file=sys.stderr)
             continue
 
         if len(candles) < 2 * D + LEAD2_PERIODS + 5:
@@ -344,7 +361,7 @@ def main():
             continue
 
         signals = compute_signals(candles, pos_size)
-        key = f"{symbol}:{timeframe}"
+        key = f"{exchange}:{symbol}:{timeframe}"
         last_processed = state.get(key)
         latest_closed_t = candles[-1]["t"]
 
@@ -352,7 +369,7 @@ def main():
             # First run for this symbol: initialize silently to avoid dumping
             # a backlog of historical signals.
             state[key] = latest_closed_t
-            print(f"[{symbol}] initialized at {latest_closed_t} (no backlog sent)")
+            print(f"[{key}] initialized at {latest_closed_t} (no backlog sent)")
             continue
 
         # Send any signal on bars newer than the last processed one (catch-up).
@@ -360,10 +377,9 @@ def main():
                        for i in range(len(candles))
                        if signals[i] is not None and candles[i]["t"] > last_processed]
         for t, sig in new_signals:
-            text = format_message(symbol, timeframe, sig)
-            send_whatsapp(text)
+            send_message(format_message(symbol, timeframe, sig))
             sent_any = True
-            print(f"[{symbol}] sent {sig['signal']} @ {t}")
+            print(f"[{key}] sent {sig['signal']} @ {t}")
 
         state[key] = latest_closed_t
 
