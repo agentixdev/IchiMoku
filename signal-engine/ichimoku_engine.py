@@ -26,6 +26,7 @@ import os
 import sys
 import urllib.request
 import urllib.error
+import urllib.parse
 
 # ── Indicator parameters (match the Pine defaults) ───────────────────────────
 CONV_PERIODS = 9
@@ -55,16 +56,52 @@ def env(name, default=None):
 
 
 # ── Candle fetching ──────────────────────────────────────────────────────────
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+
+
 def _http_get_json(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "ichimoku-engine/1.0"})
+    req = urllib.request.Request(url, headers={"User-Agent": _BROWSER_UA})
     with urllib.request.urlopen(req, timeout=20) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
+# Yahoo interval map (covers crypto, forex, stocks, indices in ONE feed)
+YAHOO_INT = {"1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m", "1h": "60m", "1d": "1d"}
+
+
 def fetch_candles(symbol, timeframe, exchange, limit=1000):
     """Return oldest-first list of dicts {t,o,h,l,c}, with the in-progress
-    (last, still-forming) candle dropped so we only evaluate closed bars."""
+    (last, still-forming) candle dropped so we only evaluate closed bars.
+
+    exchange:
+      yahoo          universal — BTC-USD, ETH-USD, EURUSD=X, AAPL, ^GSPC ... (recommended for mixing)
+      binance        Binance spot (USDT pairs only): BTCUSDT, ETHUSDT
+      binancefutures Binance COIN-M futures (USD): BTCUSD_PERP, ETHUSD_PERP
+      bybit          Bybit spot (USDT pairs): BTCUSDT
+    """
     tf = timeframe.lower()
+
+    if exchange == "yahoo":
+        yint = YAHOO_INT.get(tf)
+        if not yint:
+            raise ValueError(f"Yahoo source doesn't support timeframe '{timeframe}' (use 1m/5m/15m/30m/1h/1d)")
+        yrange = "2y" if tf == "1d" else "60d"
+        sym_enc = urllib.parse.quote(symbol, safe="")
+        url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{sym_enc}"
+               f"?interval={yint}&range={yrange}")
+        res = _http_get_json(url)["chart"]["result"][0]
+        ts = res.get("timestamp", []) or []
+        q = res["indicators"]["quote"][0]
+        out = []
+        for i in range(len(ts)):
+            o, h, l, c = q["open"][i], q["high"][i], q["low"][i], q["close"][i]
+            if None in (o, h, l, c):
+                continue
+            out.append({"t": int(ts[i]) * 1000, "o": float(o), "h": float(h),
+                        "l": float(l), "c": float(c)})
+        return out[:-1] if out else out
+
     if tf not in TF_MIN:
         raise ValueError(f"Unsupported TIMEFRAME '{timeframe}'")
 
@@ -74,14 +111,19 @@ def fetch_candles(symbol, timeframe, exchange, limit=1000):
         rows = _http_get_json(url)
         out = [{"t": int(r[0]), "o": float(r[1]), "h": float(r[2]),
                 "l": float(r[3]), "c": float(r[4])} for r in rows]
-    else:  # bybit (default) — broadly accessible incl. US
+    elif exchange == "binancefutures":  # COIN-M (USD): BTCUSD_PERP etc.
+        url = (f"https://dapi.binance.com/dapi/v1/klines?symbol={symbol}"
+               f"&interval={tf}&limit={min(limit, 1500)}")
+        rows = _http_get_json(url)
+        out = [{"t": int(r[0]), "o": float(r[1]), "h": float(r[2]),
+                "l": float(r[3]), "c": float(r[4])} for r in rows]
+    else:  # bybit spot
         minutes = TF_MIN[tf]
         bb_int = "D" if minutes == 1440 else str(minutes)
         url = (f"https://api.bybit.com/v5/market/kline?category=spot"
                f"&symbol={symbol}&interval={bb_int}&limit={limit}")
         data = _http_get_json(url)
-        rows = data.get("result", {}).get("list", [])
-        rows = list(reversed(rows))  # bybit returns newest-first
+        rows = list(reversed(data.get("result", {}).get("list", [])))  # newest-first
         out = [{"t": int(r[0]), "o": float(r[1]), "h": float(r[2]),
                 "l": float(r[3]), "c": float(r[4])} for r in rows]
 
@@ -197,7 +239,11 @@ def compute_signals(candles, pos_size):
 
 # ── Messaging ────────────────────────────────────────────────────────────────
 def fmt_num(v):
-    return f"{v:,.2f}".rstrip("0").rstrip(".") if isinstance(v, float) else f"{v:,}"
+    if not isinstance(v, float):
+        return f"{v:,}"
+    a = abs(v)
+    dec = 2 if a >= 100 else 4 if a >= 1 else 6  # forex/low-price get more decimals
+    return f"{v:,.{dec}f}".rstrip("0").rstrip(".")
 
 
 def format_message(symbol, timeframe, sig):

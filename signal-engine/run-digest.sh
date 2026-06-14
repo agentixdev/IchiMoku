@@ -8,9 +8,9 @@ if [ -f ./secrets.env ]; then
 fi
 
 export PROVIDER="telegram"
-export WATCHLIST="BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT"
+export EXCHANGE="yahoo"
+export WATCHLIST="BTC-USD,ETH-USD,SOL-USD,EURUSD=X,GBPUSD=X"
 export TIMEFRAME="1d"
-export EXCHANGE="binance"
 
 # export DRY_RUN="1"
 
