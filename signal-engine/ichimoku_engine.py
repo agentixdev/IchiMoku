@@ -24,6 +24,7 @@ Config via environment variables (see run.sh):
 import json
 import os
 import sys
+import time
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -68,6 +69,24 @@ def _http_get_json(url):
 
 # Yahoo interval map (covers crypto, forex, stocks, indices in ONE feed)
 YAHOO_INT = {"1m": "1m", "5m": "5m", "15m": "15m", "30m": "30m", "1h": "60m", "1d": "1d"}
+YAHOO_RANGE = {"1m": "7d", "5m": "60d", "15m": "60d", "30m": "60d", "60m": "365d", "1d": "2y"}
+
+
+def _aggregate_hours(rows, block_ms):
+    """Aggregate 1h candles into larger UTC-aligned bars (e.g. 4h forex from Yahoo).
+    Blocks anchor to UTC 00:00 because block_ms divides the day evenly."""
+    out = []
+    cur = None
+    for k in rows:
+        bstart = (k["t"] // block_ms) * block_ms
+        if cur is None or bstart != cur["t"]:
+            cur = {"t": bstart, "o": k["o"], "h": k["h"], "l": k["l"], "c": k["c"]}
+            out.append(cur)
+        else:
+            cur["h"] = max(cur["h"], k["h"])
+            cur["l"] = min(cur["l"], k["l"])
+            cur["c"] = k["c"]
+    return out
 
 
 def fetch_candles(symbol, timeframe, exchange, limit=1000):
@@ -84,9 +103,16 @@ def fetch_candles(symbol, timeframe, exchange, limit=1000):
 
     if exchange == "yahoo":
         yint = YAHOO_INT.get(tf)
-        if not yint:
-            raise ValueError(f"Yahoo source doesn't support timeframe '{timeframe}' (use 1m/5m/15m/30m/1h/1d)")
-        yrange = "2y" if tf == "1d" else "60d"
+        if yint is None:
+            # Yahoo has no native 2h/4h/6h/12h — aggregate from 1h (UTC-aligned).
+            if tf in TF_MIN and TF_MIN[tf] % 60 == 0 and TF_MIN[tf] > 60:
+                base = fetch_candles(symbol, "1h", "yahoo", limit)
+                block_ms = TF_MIN[tf] * 60 * 1000
+                now_ms = int(time.time() * 1000)
+                return [b for b in _aggregate_hours(base, block_ms)
+                        if b["t"] + block_ms <= now_ms]  # closed bars only
+            raise ValueError(f"Yahoo source doesn't support timeframe '{timeframe}'")
+        yrange = YAHOO_RANGE.get(yint, "60d")
         sym_enc = urllib.parse.quote(symbol, safe="")
         url = (f"https://query1.finance.yahoo.com/v8/finance/chart/{sym_enc}"
                f"?interval={yint}&range={yrange}")

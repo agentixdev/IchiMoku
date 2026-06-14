@@ -16,12 +16,13 @@ export PROVIDER="telegram"
 # Each symbol can carry its own timeframe + exchange:  symbol:timeframe:exchange
 # (omit parts to use the global TIMEFRAME / EXCHANGE defaults below).
 #
-# BTC = TradingView "BTCUSD.P" = Binance COIN-M perpetual BTCUSD_PERP, on 4h:
-export SYMBOLS="BTCUSD_PERP:4h:binancefutures"
+# BTC (BTCUSD.P, COIN-M) + ETH (ETHUSDT.P, USD-M) + EURUSD (forex), all on 4h.
+# Yahoo has no native 4h, so EURUSD 4h is auto-aggregated from Yahoo 1h.
+export SYMBOLS="BTCUSD_PERP:4h:binancefutures,ETHUSDT:4h:binanceusdm,EURUSD=X:4h:yahoo"
 #
-# To add more later, comma-separate. Examples (note Yahoo has no 4h — use 1h/1d there):
-#   export SYMBOLS="BTCUSD_PERP:4h:binancefutures,ETHUSD_PERP:4h:binancefutures"
-#   export SYMBOLS="BTCUSD_PERP:4h:binancefutures,EURUSD=X:1d:yahoo,ETH-USD:1d:yahoo"
+# Add/remove any symbol by editing the list. More examples:
+#   BTCUSDT:4h:binanceusdm        (BTC USD-M perpetual)
+#   GBPUSD=X:4h:yahoo , AAPL:1d:yahoo
 
 # Global defaults (used when a symbol omits its :timeframe:exchange)
 export TIMEFRAME="4h"
